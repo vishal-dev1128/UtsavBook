@@ -1,0 +1,232 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root {
+    --font-sans: 'Plus Jakarta Sans', 'Noto Sans Devanagari', system-ui, -apple-system, sans-serif;
+    --font-devanagari: 'Noto Sans Devanagari', 'Plus Jakarta Sans', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+    --mb-canvas: #F5F7FB;
+    --mb-surface: #FFFFFF;
+    --mb-border: #E2E8F0;
+    --mb-accent: #2563EB;
+    --mb-accent-dark: #1D4ED8;
+    --mb-accent-deep: #1E40AF;
+  }
+
+  /* html gets blue so notch/status-bar area fills blue on mobile */
+  html {
+    background-color: #1D4ED8;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: var(--mb-canvas);
+    color: #0F172A;
+    overscroll-behavior-y: contain;
+    -webkit-tap-highlight-color: transparent;
+    min-height: 100dvh;
+  }
+
+  .font-devanagari {
+    font-family: var(--font-devanagari);
+  }
+
+  .font-mono {
+    font-family: var(--font-mono);
+  }
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.safe-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* 120fps GPU-Composited Frosted Liquid Glass Bottom Capsule */
+.liquid-glass-bar {
+  background: linear-gradient(180deg,
+      rgba(255, 255, 255, 0.92) 0%,
+      rgba(244, 247, 252, 0.84) 100%);
+  -webkit-backdrop-filter: blur(18px) saturate(180%);
+  backdrop-filter: blur(18px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.95);
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  contain: layout style paint;
+  box-shadow:
+    0 16px 40px -8px rgba(15, 23, 42, 0.20),
+    0 4px 14px -2px rgba(37, 99, 235, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 1);
+}
+
+.liquid-glass-pill {
+  background: linear-gradient(180deg,
+      rgba(255, 255, 255, 1) 0%,
+      rgba(248, 250, 252, 0.98) 100%);
+  border: 1px solid rgba(255, 255, 255, 1);
+  will-change: transform;
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  transition: transform 280ms cubic-bezier(0.22, 1.12, 0.36, 1);
+  box-shadow:
+    0 4px 20px -3px rgba(37, 99, 235, 0.28),
+    0 2px 8px -1px rgba(37, 99, 235, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 1);
+}
+
+/* Smooth 120fps Compositor Animations (transform + opacity only) */
+@keyframes pageFadeSlideUp {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 12px, 0) scale(0.99);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes modalBackdropIn {
+  0% {
+    opacity: 0;
+  }
+
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes modalSheetIn {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 20px, 0) scale(0.97);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes stepSwapSlide {
+  0% {
+    opacity: 0;
+    transform: translate3d(12px, 0, 0);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes blueAmbientBreath {
+
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 0.55;
+  }
+
+  50% {
+    transform: translate3d(-6px, 4px, 0) scale(1.08);
+    opacity: 0.9;
+  }
+}
+
+.animate-page-in {
+  will-change: transform, opacity;
+  animation: pageFadeSlideUp 0.44s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-modal-backdrop {
+  animation: modalBackdropIn 0.22s ease-out both;
+}
+
+.animate-modal-sheet {
+  will-change: transform, opacity;
+  animation: modalSheetIn 0.34s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-step-swap {
+  will-change: transform, opacity;
+  animation: stepSwapSlide 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-blue-breath {
+  will-change: transform, opacity;
+  animation: blueAmbientBreath 6.5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .liquid-glass-pill {
+    transition-duration: 80ms;
+    transition-timing-function: ease-out;
+  }
+
+  .animate-page-in,
+  .animate-modal-sheet,
+  .animate-step-swap {
+    animation-duration: 120ms;
+  }
+
+  .animate-blue-breath {
+    animation: none;
+  }
+}
+
+/* Dark Mode Liquid Glass Support */
+.dark .liquid-glass-bar {
+  background: linear-gradient(180deg,
+      rgba(30, 41, 59, 0.82) 0%,
+      rgba(15, 23, 42, 0.74) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow:
+    0 10px 26px -8px rgba(0, 0, 0, 0.48),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.dark .liquid-glass-pill {
+  background: linear-gradient(180deg,
+      rgba(51, 65, 85, 0.94) 0%,
+      rgba(30, 41, 59, 0.94) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .print-only-container {
+    box-shadow: none !important;
+    border: none !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+  }
+}

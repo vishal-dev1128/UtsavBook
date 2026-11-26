@@ -1,0 +1,735 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Primitive Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isRecordOwner(data) {
+      return isSignedIn()
+        && ('user_id' in data)
+        && data.user_id is string
+        && data.user_id.size() >= 1
+        && data.user_id.size() <= 128
+        && data.user_id == request.auth.uid;
+    }
+
+    function isMandalOwner(mandalId) {
+      return isSignedIn() && isValidId(mandalId) && mandalId == request.auth.uid;
+    }
+
+    function memberDocPath(mandalId) {
+      return /databases/$(database)/documents/mandals/$(mandalId)/members/$(request.auth.uid);
+    }
+
+    function isActiveMember(mandalId) {
+      return isSignedIn()
+        && isValidId(mandalId)
+        && exists(memberDocPath(mandalId))
+        && get(memberDocPath(mandalId)).data.status == 'active';
+    }
+
+    function isMandalMember(mandalId) {
+      return isMandalOwner(mandalId) || isActiveMember(mandalId);
+    }
+
+    function isMandalAdmin(mandalId) {
+      return isMandalOwner(mandalId)
+        || (isActiveMember(mandalId) && get(memberDocPath(mandalId)).data.role == 'admin');
+    }
+
+    function isMandalWriter(mandalId) {
+      return isMandalOwner(mandalId)
+        || (isActiveMember(mandalId) && get(memberDocPath(mandalId)).data.role in ['admin', 'collector']);
+    }
+
+    // --- Validation Blueprints ---
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['user_id', 'name', 'platformRole', 'createdAt'])
+        && data.keys().hasOnly(['user_id', 'name', 'email', 'phone', 'platformRole', 'createdAt'])
+        && isValidId(data.user_id)
+        && data.user_id == request.auth.uid
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 120
+        && (!('email' in data) || (data.email is string && data.email.size() <= 120))
+        && (!('phone' in data) || (data.phone is string && data.phone.size() <= 24))
+        && data.platformRole == 'user'
+        && data.createdAt is timestamp;
+    }
+
+    function isValidUserMandalLink(data) {
+      return data.keys().hasAll(['user_id', 'uid', 'mandalId', 'role', 'updatedAt'])
+        && data.keys().hasOnly(['user_id', 'uid', 'mandalId', 'role', 'updatedAt'])
+        && isValidId(data.user_id)
+        && data.user_id == request.auth.uid
+        && data.uid == request.auth.uid
+        && isValidId(data.mandalId)
+        && data.role in ['admin', 'collector', 'auditor']
+        && data.updatedAt == request.time;
+    }
+
+    function isValidMandalLinkTarget(userId, data) {
+      return (data.mandalId == userId && data.role == 'admin')
+        || (exists(/databases/$(database)/documents/mandals/$(data.mandalId))
+          && (
+            (exists(/databases/$(database)/documents/mandals/$(data.mandalId)/members/$(userId))
+              && get(/databases/$(database)/documents/mandals/$(data.mandalId)/members/$(userId)).data.status == 'active'
+              && data.role == get(/databases/$(database)/documents/mandals/$(data.mandalId)/members/$(userId)).data.role)
+            || (data.role == 'collector'
+              && existsAfter(/databases/$(database)/documents/mandals/$(data.mandalId)/members/$(userId))
+              && getAfter(/databases/$(database)/documents/mandals/$(data.mandalId)/members/$(userId)).data.role == 'collector'
+              && getAfter(/databases/$(database)/documents/mandals/$(data.mandalId)/members/$(userId)).data.status == 'active')
+          ));
+    }
+
+    function isValidMandalCode(data) {
+      return data.keys().hasAll(['user_id', 'joinCode', 'mandalId', 'mandalName', 'ownerId', 'createdAt'])
+        && data.keys().hasOnly(['user_id', 'joinCode', 'mandalId', 'mandalName', 'area', 'ownerId', 'createdAt'])
+        && isValidId(data.user_id)
+        && data.user_id == request.auth.uid
+        && isValidId(data.joinCode)
+        && isValidId(data.mandalId)
+        && data.mandalName is string && data.mandalName.size() >= 1 && data.mandalName.size() <= 140
+        && (!('area' in data) || (data.area is string && data.area.size() <= 200))
+        && isValidId(data.ownerId)
+        && data.ownerId == request.auth.uid
+        && data.createdAt is timestamp;
+    }
+
+    function isValidMandal(data, mandalId) {
+      return data.keys().hasAll(['user_id', 'name', 'estYear', 'receiptPrefix', 'joinCode', 'tierName', 'whatsappCredits', 'isVerified', 'showDonorsPublic', 'ownerId', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['user_id', 'name', 'localName', 'subtitle', 'address', 'estYear', 'logoUrl', 'signatureUrl', 'upiId', 'upiQrUrl', 'receiptPrefix', 'joinCode', 'tierName', 'whatsappCredits', 'whatsapp_credits', 'isVerified', 'showDonorsPublic', 'ownerId', 'createdAt', 'updatedAt'])
+        && isValidId(data.user_id)
+        && data.user_id == mandalId
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 140
+        && (!('localName' in data) || (data.localName is string && data.localName.size() <= 140))
+        && (!('subtitle' in data) || (data.subtitle is string && data.subtitle.size() <= 140))
+        && (!('address' in data) || (data.address is string && data.address.size() <= 240))
+        && data.estYear is string && data.estYear.size() >= 2 && data.estYear.size() <= 10
+        && (!('logoUrl' in data) || (data.logoUrl is string && data.logoUrl.size() <= 250000))
+        && (!('signatureUrl' in data) || (data.signatureUrl is string && data.signatureUrl.size() <= 250000))
+        && (!('upiId' in data) || (data.upiId is string && data.upiId.size() <= 100))
+        && (!('upiQrUrl' in data) || (data.upiQrUrl is string && data.upiQrUrl.size() <= 250000))
+        && data.receiptPrefix is string && data.receiptPrefix.size() >= 1 && data.receiptPrefix.size() <= 16
+        && isValidId(data.joinCode)
+        && data.tierName in ['Free', 'Bronze', 'Silver', 'Gold']
+        && data.whatsappCredits is int && data.whatsappCredits >= 0
+        && (!('whatsapp_credits' in data) || (data.whatsapp_credits is int && data.whatsapp_credits >= 0))
+        && data.isVerified is bool
+        && data.showDonorsPublic is bool
+        && isValidId(data.ownerId)
+        && data.ownerId == mandalId
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidMember(data, mandalId) {
+      return data.keys().hasAll(['user_id', 'uid', 'name', 'role', 'cashInHand', 'status', 'joinedAt'])
+        && data.keys().hasOnly(['user_id', 'uid', 'name', 'phone', 'email', 'role', 'cashInHand', 'status', 'joinedAt'])
+        && isValidId(data.user_id)
+        && data.user_id == mandalId
+        && isValidId(data.uid)
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 100
+        && (!('phone' in data) || (data.phone is string && data.phone.size() <= 24))
+        && (!('email' in data) || (data.email is string && data.email.size() <= 120))
+        && data.role in ['admin', 'collector', 'auditor']
+        && (data.cashInHand is int || data.cashInHand is float) && data.cashInHand >= 0
+        && data.status in ['active', 'suspended']
+        && data.joinedAt is timestamp;
+    }
+
+    function isValidUtsav(data, mandalId) {
+      return data.keys().hasAll(['user_id', 'name', 'yearCycle', 'lastReceiptSeq', 'totalCollected', 'totalSpent', 'isActive', 'createdAt'])
+        && data.keys().hasOnly(['user_id', 'name', 'yearCycle', 'lastReceiptSeq', 'totalCollected', 'totalSpent', 'categoryBudgets', 'isActive', 'createdAt'])
+        && isValidId(data.user_id)
+        && data.user_id == mandalId
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 80
+        && data.yearCycle is string && data.yearCycle.size() >= 4 && data.yearCycle.size() <= 20
+        && data.lastReceiptSeq is int && data.lastReceiptSeq >= 0
+        && (data.totalCollected is int || data.totalCollected is float) && data.totalCollected >= 0
+        && (data.totalSpent is int || data.totalSpent is float) && data.totalSpent >= 0
+        && (!('categoryBudgets' in data) || (data.categoryBudgets is map && data.categoryBudgets.size() <= 30))
+        && data.isActive is bool
+        && data.createdAt is timestamp;
+    }
+
+    function isValidEntry(data, mandalId) {
+      return data.keys().hasAll(['user_id', 'type', 'titleOrDonorName', 'head', 'amount', 'paymentMode', 'whatsappStatus', 'approvalStatus', 'createdByUid', 'createdByName', 'isVoided', 'entryDate', 'createdAt'])
+        && data.keys().hasOnly(['user_id', 'type', 'receiptNumber', 'publicReceiptId', 'titleOrDonorName', 'flatOrAddress', 'donorPhone', 'head', 'amount', 'goodsDescription', 'quantity', 'estimatedValue', 'paymentMode', 'upiTransactionId', 'isAnonymous', 'billPhotoUrl', 'receiptImageUrl', 'note', 'whatsappStatus', 'whatsappMessageId', 'whatsappError', 'approvalStatus', 'createdByUid', 'createdByName', 'isVoided', 'voidedAt', 'entryDate', 'createdAt'])
+        && isValidId(data.user_id)
+        && data.user_id == mandalId
+        && data.type in ['income', 'expense', 'goods']
+        && (!('receiptNumber' in data) || (data.receiptNumber is string && data.receiptNumber.size() <= 32))
+        && (!('publicReceiptId' in data) || (data.publicReceiptId is string && data.publicReceiptId.size() <= 64))
+        && data.titleOrDonorName is string && data.titleOrDonorName.size() >= 1 && data.titleOrDonorName.size() <= 140
+        && (!('flatOrAddress' in data) || (data.flatOrAddress is string && data.flatOrAddress.size() <= 140))
+        && (!('donorPhone' in data) || (data.donorPhone is string && data.donorPhone.size() <= 24))
+        && data.head is string && data.head.size() >= 1 && data.head.size() <= 60
+        && (data.amount is int || data.amount is float) && data.amount >= 0
+        && (!('goodsDescription' in data) || (data.goodsDescription is string && data.goodsDescription.size() <= 240))
+        && (!('quantity' in data) || (data.quantity is string && data.quantity.size() <= 60))
+        && (!('estimatedValue' in data) || ((data.estimatedValue is int || data.estimatedValue is float) && data.estimatedValue >= 0))
+        && data.paymentMode in ['CASH', 'UPI', 'BANK', 'GOODS']
+        && (!('upiTransactionId' in data) || (data.upiTransactionId is string && data.upiTransactionId.size() <= 80))
+        && (!('isAnonymous' in data) || data.isAnonymous is bool)
+        && (!('billPhotoUrl' in data) || (data.billPhotoUrl is string && data.billPhotoUrl.size() <= 250000))
+        && (!('receiptImageUrl' in data) || (data.receiptImageUrl is string && data.receiptImageUrl.size() <= 2000))
+        && (!('note' in data) || (data.note is string && data.note.size() <= 300))
+        && data.whatsappStatus in ['not_sent', 'pending', 'sent', 'delivered', 'failed']
+        && (!('whatsappMessageId' in data) || (data.whatsappMessageId is string && data.whatsappMessageId.size() <= 120))
+        && (!('whatsappError' in data) || (data.whatsappError is string && data.whatsappError.size() <= 500))
+        && data.approvalStatus in ['approved', 'pending']
+        && isValidId(data.createdByUid)
+        && data.createdByName is string && data.createdByName.size() >= 1 && data.createdByName.size() <= 100
+        && data.isVoided is bool
+        && (!('voidedAt' in data) || (data.voidedAt is string && data.voidedAt.size() <= 64))
+        && data.entryDate is string && data.entryDate.size() >= 8 && data.entryDate.size() <= 32
+        && data.createdAt is timestamp;
+    }
+
+    function isValidDonation(data) {
+      return data.keys().hasAll(['user_id', 'mandalId', 'utsavId', 'entryId', 'donorName', 'amount', 'mode', 'category', 'utsavCycle', 'mandalName', 'receiptNo', 'whatsappStatus', 'createdAt'])
+        && data.keys().hasOnly(['user_id', 'mandalId', 'utsavId', 'entryId', 'donorName', 'flatNo', 'phone', 'amount', 'mode', 'category', 'utsavCycle', 'mandalName', 'receiptNo', 'receiptImageUrl', 'whatsappStatus', 'whatsappMessageId', 'whatsappError', 'creditDeducted', 'createdAt'])
+        && isValidId(data.user_id)
+        && isValidId(data.mandalId)
+        && data.user_id == data.mandalId
+        && isValidId(data.utsavId)
+        && isValidId(data.entryId)
+        && data.donorName is string && data.donorName.size() >= 1 && data.donorName.size() <= 140
+        && (!('flatNo' in data) || (data.flatNo is string && data.flatNo.size() <= 140))
+        && (!('phone' in data) || (data.phone is string && data.phone.size() <= 20))
+        && (data.amount is int || data.amount is float) && data.amount > 0
+        && data.mode in ['CASH', 'UPI', 'BANK', 'GOODS']
+        && data.category is string && data.category.size() >= 1 && data.category.size() <= 80
+        && data.utsavCycle is string && data.utsavCycle.size() >= 1 && data.utsavCycle.size() <= 120
+        && data.mandalName is string && data.mandalName.size() >= 1 && data.mandalName.size() <= 140
+        && data.receiptNo is string && data.receiptNo.size() >= 1 && data.receiptNo.size() <= 32
+        && (!('receiptImageUrl' in data) || (data.receiptImageUrl is string && data.receiptImageUrl.size() <= 2000))
+        && data.whatsappStatus in ['not_sent', 'pending', 'sent', 'delivered', 'failed']
+        && (!('whatsappMessageId' in data) || (data.whatsappMessageId is string && data.whatsappMessageId.size() <= 120))
+        && (!('whatsappError' in data) || (data.whatsappError is string && data.whatsappError.size() <= 500))
+        && (!('creditDeducted' in data) || data.creditDeducted is bool)
+        && data.createdAt is timestamp;
+    }
+
+    function isValidNakasha(data, mandalId) {
+      return data.keys().hasAll(['user_id', 'wingName', 'flatNumber', 'residentName', 'status', 'donationAmount'])
+        && data.keys().hasOnly(['user_id', 'wingName', 'flatNumber', 'residentName', 'phone', 'status', 'donationAmount', 'assignedCollectorUid', 'assignedCollectorName'])
+        && isValidId(data.user_id)
+        && data.user_id == mandalId
+        && data.wingName is string && data.wingName.size() >= 1 && data.wingName.size() <= 60
+        && data.flatNumber is string && data.flatNumber.size() >= 1 && data.flatNumber.size() <= 40
+        && data.residentName is string && data.residentName.size() >= 1 && data.residentName.size() <= 120
+        && (!('phone' in data) || (data.phone is string && data.phone.size() <= 24))
+        && data.status in ['pending', 'collected', 'not_home', 'skipped']
+        && (data.donationAmount is int || data.donationAmount is float) && data.donationAmount >= 0
+        && (!('assignedCollectorUid' in data) || (data.assignedCollectorUid is string && data.assignedCollectorUid.size() <= 128))
+        && (!('assignedCollectorName' in data) || (data.assignedCollectorName is string && data.assignedCollectorName.size() <= 100));
+    }
+
+    function isValidVendor(data, mandalId) {
+      return data.keys().hasAll(['user_id', 'utsavId', 'name', 'category', 'totalContract', 'advancePaid', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['user_id', 'utsavId', 'name', 'category', 'phone', 'totalContract', 'advancePaid', 'dueDate', 'note', 'status', 'createdAt', 'updatedAt'])
+        && isValidId(data.user_id)
+        && data.user_id == mandalId
+        && isValidId(data.utsavId)
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 120
+        && data.category is string && data.category.size() >= 1 && data.category.size() <= 60
+        && (!('phone' in data) || (data.phone is string && data.phone.size() <= 24))
+        && (data.totalContract is int || data.totalContract is float) && data.totalContract >= 0
+        && (data.advancePaid is int || data.advancePaid is float) && data.advancePaid >= 0
+        && (!('dueDate' in data) || (data.dueDate is string && data.dueDate.size() <= 32))
+        && (!('note' in data) || (data.note is string && data.note.size() <= 300))
+        && data.status in ['pending', 'partial', 'paid']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidEvent(data, mandalId) {
+      return data.keys().hasAll(['user_id', 'title', 'date', 'time'])
+        && data.keys().hasOnly(['user_id', 'title', 'date', 'time', 'description', 'location'])
+        && isValidId(data.user_id)
+        && data.user_id == mandalId
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 120
+        && data.date is string && data.date.size() >= 4 && data.date.size() <= 32
+        && data.time is string && data.time.size() >= 1 && data.time.size() <= 32
+        && (!('description' in data) || (data.description is string && data.description.size() <= 300))
+        && (!('location' in data) || (data.location is string && data.location.size() <= 140));
+    }
+
+    function isValidDocument(data, mandalId) {
+      return data.keys().hasAll(['user_id', 'title', 'category', 'uploadedBy', 'createdAt'])
+        && data.keys().hasOnly(['user_id', 'title', 'category', 'fileUrl', 'uploadedBy', 'createdAt'])
+        && isValidId(data.user_id)
+        && data.user_id == mandalId
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 140
+        && data.category is string && data.category.size() >= 1 && data.category.size() <= 60
+        && (!('fileUrl' in data) || (data.fileUrl is string && data.fileUrl.size() <= 250000))
+        && data.uploadedBy is string && data.uploadedBy.size() >= 1 && data.uploadedBy.size() <= 100
+        && data.createdAt is timestamp;
+    }
+
+    function isValidHandover(data, mandalId) {
+      return data.keys().hasAll(['user_id', 'utsavId', 'collectorUid', 'collectorName', 'amount', 'status', 'createdAt'])
+        && data.keys().hasOnly(['user_id', 'utsavId', 'collectorUid', 'collectorName', 'amount', 'status', 'createdAt'])
+        && isValidId(data.user_id)
+        && data.user_id == mandalId
+        && isValidId(data.utsavId)
+        && isValidId(data.collectorUid)
+        && data.collectorName is string && data.collectorName.size() >= 1 && data.collectorName.size() <= 100
+        && (data.amount is int || data.amount is float) && data.amount > 0
+        && data.status in ['pending', 'confirmed']
+        && data.createdAt is timestamp;
+    }
+
+    function isValidWalletTx(data, mandalId) {
+      return data.keys().hasAll(['user_id', 'type', 'creditsDelta', 'amountInr', 'createdAt'])
+        && data.keys().hasOnly(['user_id', 'type', 'creditsDelta', 'amountInr', 'packName', 'razorpayPaymentId', 'createdAt'])
+        && isValidId(data.user_id)
+        && data.user_id == mandalId
+        && data.type in ['signup_bonus', 'pack_purchase', 'receipt_sent', 'failed_refund']
+        && data.creditsDelta is int
+        && (data.amountInr is int || data.amountInr is float) && data.amountInr >= 0
+        && (!('packName' in data) || (data.packName is string && data.packName.size() <= 80))
+        && (!('razorpayPaymentId' in data) || (data.razorpayPaymentId is string && data.razorpayPaymentId.size() <= 120))
+        && data.createdAt is timestamp;
+    }
+
+    function isValidCreditTx(data, mandalId) {
+      return data.keys().hasAll(['user_id', 'id', 'pack_name', 'credits_added', 'amount_paid', 'payment_ref', 'status', 'created_at'])
+        && data.keys().hasOnly(['user_id', 'id', 'pack_name', 'credits_added', 'amount_paid', 'payment_ref', 'status', 'created_at'])
+        && isValidId(data.user_id)
+        && data.user_id == mandalId
+        && isValidId(data.id)
+        && data.pack_name is string && data.pack_name.size() >= 1 && data.pack_name.size() <= 100
+        && data.credits_added is int && data.credits_added > 0 && data.credits_added <= 10000
+        && (data.amount_paid is int || data.amount_paid is float) && data.amount_paid >= 0 && data.amount_paid <= 100000
+        && data.payment_ref is string && data.payment_ref.size() >= 4 && data.payment_ref.size() <= 120
+        && data.status in ['completed', 'pending', 'failed']
+        && data.created_at is timestamp;
+    }
+
+    function isValidAuditLog(data, mandalId) {
+      return data.keys().hasAll(['user_id', 'action', 'entryId', 'summary', 'performedByUid', 'performedByName', 'timestamp'])
+        && data.keys().hasOnly(['user_id', 'action', 'entryId', 'summary', 'beforeData', 'afterData', 'performedByUid', 'performedByName', 'timestamp'])
+        && isValidId(data.user_id)
+        && data.user_id == mandalId
+        && data.action is string && data.action.size() >= 1 && data.action.size() <= 40
+        && isValidId(data.entryId)
+        && data.summary is string && data.summary.size() >= 1 && data.summary.size() <= 300
+        && (!('beforeData' in data) || (data.beforeData is string && data.beforeData.size() <= 1000))
+        && (!('afterData' in data) || (data.afterData is string && data.afterData.size() <= 1000))
+        && isValidId(data.performedByUid)
+        && data.performedByName is string && data.performedByName.size() >= 1 && data.performedByName.size() <= 100
+        && data.timestamp is timestamp;
+    }
+
+    function isValidPublicReceipt(data) {
+      return data.keys().hasAll(['user_id', 'publicReceiptId', 'mandalId', 'mandalName', 'utsavName', 'receiptNumber', 'donorName', 'amount', 'paymentMode', 'date', 'isVoided'])
+        && data.keys().hasOnly(['user_id', 'publicReceiptId', 'mandalId', 'mandalName', 'mandalAddress', 'estYear', 'utsavName', 'receiptNumber', 'donorName', 'flatOrAddress', 'amount', 'paymentMode', 'upiTransactionId', 'isAnonymous', 'date', 'receiptImageUrl', 'isVerified', 'isVoided'])
+        && isValidId(data.user_id)
+        && isValidId(data.publicReceiptId)
+        && isValidId(data.mandalId)
+        && data.user_id == data.mandalId
+        && data.mandalName is string && data.mandalName.size() <= 140
+        && (!('mandalAddress' in data) || (data.mandalAddress is string && data.mandalAddress.size() <= 240))
+        && (!('estYear' in data) || (data.estYear is string && data.estYear.size() <= 10))
+        && data.utsavName is string && data.utsavName.size() <= 80
+        && data.receiptNumber is string && data.receiptNumber.size() <= 32
+        && data.donorName is string && data.donorName.size() <= 140
+        && (!('flatOrAddress' in data) || (data.flatOrAddress is string && data.flatOrAddress.size() <= 140))
+        && (data.amount is int || data.amount is float) && data.amount >= 0
+        && data.paymentMode is string && data.paymentMode.size() <= 16
+        && (!('upiTransactionId' in data) || (data.upiTransactionId is string && data.upiTransactionId.size() <= 80))
+        && (!('isAnonymous' in data) || data.isAnonymous is bool)
+        && data.date is string && data.date.size() <= 32
+        && (!('receiptImageUrl' in data) || (data.receiptImageUrl is string && data.receiptImageUrl.size() <= 2000))
+        && (!('isVerified' in data) || data.isVerified is bool)
+        && data.isVoided is bool;
+    }
+
+    function isValidPublicMandal(data) {
+      return data.keys().hasAll(['user_id', 'joinCode', 'mandalId', 'mandalName', 'utsavName', 'totalCollected', 'totalSpent', 'showDonorsPublic', 'categoryBreakdown', 'updatedAt'])
+        && data.keys().hasOnly(['user_id', 'joinCode', 'mandalId', 'mandalName', 'address', 'estYear', 'isVerified', 'utsavName', 'yearCycle', 'totalCollected', 'totalSpent', 'showDonorsPublic', 'categoryBreakdown', 'publicDonors', 'publicGoods', 'updatedAt'])
+        && isValidId(data.user_id)
+        && isValidId(data.joinCode)
+        && isValidId(data.mandalId)
+        && data.user_id == data.mandalId
+        && data.mandalName is string && data.mandalName.size() <= 140
+        && (!('address' in data) || (data.address is string && data.address.size() <= 240))
+        && (!('estYear' in data) || (data.estYear is string && data.estYear.size() <= 10))
+        && (!('isVerified' in data) || data.isVerified is bool)
+        && data.utsavName is string && data.utsavName.size() <= 80
+        && (!('yearCycle' in data) || (data.yearCycle is string && data.yearCycle.size() <= 20))
+        && (data.totalCollected is int || data.totalCollected is float)
+        && (data.totalSpent is int || data.totalSpent is float)
+        && data.showDonorsPublic is bool
+        && data.categoryBreakdown is list && data.categoryBreakdown.size() <= 30
+        && (!('publicDonors' in data) || (data.publicDonors is list && data.publicDonors.size() <= 200))
+        && (!('publicGoods' in data) || (data.publicGoods is list && data.publicGoods.size() <= 100))
+        && data.updatedAt is timestamp;
+    }
+
+    // --- Collection Rules (Per-User Isolation + Invited Mandal Committee RBAC + Public Snapshots) ---
+
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && request.auth.uid == userId && (resource == null || isRecordOwner(existing()));
+      allow list: if isSignedIn() && isRecordOwner(existing());
+      allow create: if isSignedIn()
+        && isValidId(userId)
+        && request.auth.uid == userId
+        && isValidUserProfile(incoming())
+        && incoming().createdAt == request.time;
+      allow update: if isSignedIn()
+        && isValidId(userId)
+        && request.auth.uid == userId
+        && isValidUserProfile(incoming())
+        && (
+          (isRecordOwner(existing()) && incoming().user_id == existing().user_id && incoming().createdAt == existing().createdAt)
+          || (!('user_id' in existing()) && incoming().user_id == request.auth.uid && incoming().createdAt == request.time)
+        );
+      allow delete: if isSignedIn() && isValidId(userId) && request.auth.uid == userId && isRecordOwner(existing());
+    }
+
+    match /userMandals/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && request.auth.uid == userId && (resource == null || isRecordOwner(existing()));
+      allow list: if isSignedIn() && isRecordOwner(existing());
+      allow create: if isSignedIn()
+        && isValidId(userId)
+        && request.auth.uid == userId
+        && isValidUserMandalLink(incoming())
+        && isValidMandalLinkTarget(userId, incoming());
+      allow update: if isSignedIn()
+        && isValidId(userId)
+        && request.auth.uid == userId
+        && isValidUserMandalLink(incoming())
+        && isValidMandalLinkTarget(userId, incoming())
+        && (
+          (isRecordOwner(existing()) && incoming().user_id == existing().user_id)
+          || (!('user_id' in existing()) && incoming().user_id == request.auth.uid)
+        );
+      allow delete: if isSignedIn() && isValidId(userId) && request.auth.uid == userId && isRecordOwner(existing());
+    }
+
+    match /mandalCodes/{joinCode} {
+      allow get: if isSignedIn() && isValidId(joinCode);
+      allow list: if isSignedIn() && isRecordOwner(existing());
+      allow create: if isSignedIn()
+        && isValidId(joinCode)
+        && isValidMandalCode(incoming())
+        && incoming().joinCode == joinCode
+        && incoming().createdAt == request.time;
+      allow update: if isSignedIn()
+        && isValidId(joinCode)
+        && isRecordOwner(existing())
+        && isValidMandalCode(incoming())
+        && incoming().user_id == existing().user_id
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt;
+      allow delete: if isSignedIn() && isValidId(joinCode) && isRecordOwner(existing());
+    }
+
+    match /mandals/{mandalId} {
+      allow get: if isSignedIn() && isValidId(mandalId) && ((resource == null && mandalId == request.auth.uid) || (resource != null && existing().user_id == mandalId && isMandalMember(mandalId)));
+      allow list: if isSignedIn() && existing().user_id == mandalId && isMandalMember(mandalId);
+
+      allow create: if isSignedIn()
+        && isValidId(mandalId)
+        && mandalId == request.auth.uid
+        && isValidMandal(incoming(), mandalId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isSignedIn()
+        && isValidId(mandalId)
+        && isValidMandal(incoming(), mandalId)
+        && incoming().updatedAt == request.time
+        && (
+          (isMandalAdmin(mandalId)
+            && existing().user_id == mandalId
+            && incoming().user_id == existing().user_id
+            && incoming().ownerId == existing().ownerId
+            && incoming().createdAt == existing().createdAt)
+          || (isMandalWriter(mandalId)
+            && existing().user_id == mandalId
+            && incoming().diff(existing()).affectedKeys().hasOnly(['whatsappCredits', 'whatsapp_credits', 'updatedAt'])
+            && incoming().whatsappCredits <= existing().whatsappCredits
+            && (!('whatsapp_credits' in incoming()) || incoming().whatsapp_credits == incoming().whatsappCredits))
+          || (mandalId == request.auth.uid
+            && !('user_id' in existing())
+            && (!('ownerId' in existing()) || existing().ownerId == request.auth.uid)
+            && incoming().user_id == request.auth.uid
+            && incoming().ownerId == request.auth.uid
+            && incoming().createdAt == request.time)
+        );
+
+      allow delete: if isSignedIn() && isValidId(mandalId) && isMandalOwner(mandalId) && isRecordOwner(existing());
+
+      match /members/{userId} {
+        allow get: if isSignedIn()
+          && isValidId(mandalId)
+          && isValidId(userId)
+          && (userId == request.auth.uid || (resource != null && existing().user_id == mandalId && isMandalMember(mandalId)));
+        allow list: if isSignedIn() && existing().user_id == mandalId && isMandalMember(mandalId);
+
+        allow create: if isSignedIn()
+          && isValidId(mandalId) && isValidId(userId)
+          && isValidMember(incoming(), mandalId)
+          && incoming().joinedAt == request.time
+          && (
+            isMandalAdmin(mandalId)
+            || (userId == request.auth.uid
+              && exists(/databases/$(database)/documents/mandals/$(mandalId))
+              && incoming().uid == request.auth.uid
+              && incoming().role == 'collector'
+              && incoming().cashInHand == 0
+              && incoming().status == 'active'
+              && existsAfter(/databases/$(database)/documents/userMandals/$(userId))
+              && getAfter(/databases/$(database)/documents/userMandals/$(userId)).data.mandalId == mandalId)
+          );
+
+        allow update: if isSignedIn()
+          && isValidId(mandalId) && isValidId(userId)
+          && isValidMember(incoming(), mandalId)
+          && (
+            (isMandalAdmin(mandalId)
+              && existing().user_id == mandalId
+              && incoming().user_id == existing().user_id
+              && incoming().uid == existing().uid
+              && incoming().joinedAt == existing().joinedAt)
+            || (isActiveMember(mandalId)
+              && userId == request.auth.uid
+              && existing().user_id == mandalId
+              && incoming().diff(existing()).affectedKeys().hasOnly(['cashInHand'])
+              && incoming().cashInHand >= existing().cashInHand)
+            || (mandalId == request.auth.uid
+              && userId == request.auth.uid
+              && !('user_id' in existing())
+              && incoming().user_id == request.auth.uid
+              && incoming().uid == request.auth.uid
+              && incoming().joinedAt == request.time)
+          );
+
+        allow delete: if isSignedIn() && isValidId(mandalId) && isValidId(userId) && isMandalAdmin(mandalId) && existing().user_id == mandalId && userId != mandalId;
+      }
+
+      match /utsavs/{utsavId} {
+        allow get: if isSignedIn() && isValidId(mandalId) && isValidId(utsavId) && resource != null && existing().user_id == mandalId && isMandalMember(mandalId);
+        allow list: if isSignedIn() && existing().user_id == mandalId && isMandalMember(mandalId);
+
+        allow create: if isSignedIn()
+          && isValidId(mandalId) && isValidId(utsavId)
+          && isMandalAdmin(mandalId)
+          && isValidUtsav(incoming(), mandalId)
+          && incoming().createdAt == request.time;
+
+        allow update: if isSignedIn()
+          && isValidId(mandalId) && isValidId(utsavId)
+          && existing().user_id == mandalId
+          && isValidUtsav(incoming(), mandalId)
+          && incoming().user_id == existing().user_id
+          && incoming().createdAt == existing().createdAt
+          && (
+            isMandalAdmin(mandalId)
+            || (isMandalWriter(mandalId)
+              && incoming().diff(existing()).affectedKeys().hasOnly(['lastReceiptSeq', 'totalCollected'])
+              && incoming().lastReceiptSeq >= existing().lastReceiptSeq
+              && incoming().totalCollected >= existing().totalCollected)
+          );
+
+        allow delete: if isSignedIn() && isValidId(mandalId) && isValidId(utsavId) && isMandalAdmin(mandalId) && existing().user_id == mandalId;
+
+        match /entries/{entryId} {
+          allow get: if isSignedIn() && isValidId(mandalId) && isValidId(utsavId) && isValidId(entryId) && resource != null && existing().user_id == mandalId && isMandalMember(mandalId);
+          allow list: if isSignedIn() && existing().user_id == mandalId && isMandalMember(mandalId);
+
+          allow create: if isSignedIn()
+            && isValidId(mandalId) && isValidId(utsavId) && isValidId(entryId)
+            && isMandalWriter(mandalId)
+            && isValidEntry(incoming(), mandalId)
+            && incoming().createdByUid == request.auth.uid
+            && incoming().createdAt == request.time
+            && (isMandalAdmin(mandalId) || incoming().type != 'expense' || incoming().approvalStatus == 'pending');
+
+          allow update: if isSignedIn()
+            && isValidId(mandalId) && isValidId(utsavId) && isValidId(entryId)
+            && existing().user_id == mandalId
+            && isValidEntry(incoming(), mandalId)
+            && incoming().user_id == existing().user_id
+            && incoming().createdByUid == existing().createdByUid
+            && incoming().createdAt == existing().createdAt
+            && (
+              isMandalAdmin(mandalId)
+              || (isMandalWriter(mandalId)
+                && incoming().diff(existing()).affectedKeys().hasOnly(['donorPhone', 'whatsappStatus', 'receiptImageUrl', 'whatsappError']))
+            );
+
+          allow delete: if isSignedIn() && isValidId(mandalId) && isValidId(utsavId) && isValidId(entryId) && isMandalAdmin(mandalId) && existing().user_id == mandalId;
+        }
+      }
+
+      match /nakasha/{unitId} {
+        allow get: if isSignedIn() && isValidId(mandalId) && isValidId(unitId) && resource != null && existing().user_id == mandalId && isMandalMember(mandalId);
+        allow list: if isSignedIn() && existing().user_id == mandalId && isMandalMember(mandalId);
+        allow create: if isSignedIn() && isValidId(mandalId) && isValidId(unitId) && isMandalWriter(mandalId) && isValidNakasha(incoming(), mandalId);
+        allow update: if isSignedIn() && isValidId(mandalId) && isValidId(unitId) && isMandalWriter(mandalId) && existing().user_id == mandalId && isValidNakasha(incoming(), mandalId) && incoming().user_id == existing().user_id;
+        allow delete: if isSignedIn() && isValidId(mandalId) && isValidId(unitId) && isMandalAdmin(mandalId) && existing().user_id == mandalId;
+      }
+
+      match /events/{eventId} {
+        allow get: if isSignedIn() && isValidId(mandalId) && isValidId(eventId) && resource != null && existing().user_id == mandalId && isMandalMember(mandalId);
+        allow list: if isSignedIn() && existing().user_id == mandalId && isMandalMember(mandalId);
+        allow create: if isSignedIn() && isValidId(mandalId) && isValidId(eventId) && isMandalAdmin(mandalId) && isValidEvent(incoming(), mandalId);
+        allow update: if isSignedIn() && isValidId(mandalId) && isValidId(eventId) && isMandalAdmin(mandalId) && existing().user_id == mandalId && isValidEvent(incoming(), mandalId) && incoming().user_id == existing().user_id;
+        allow delete: if isSignedIn() && isValidId(mandalId) && isValidId(eventId) && isMandalAdmin(mandalId) && existing().user_id == mandalId;
+      }
+
+      match /documents/{docId} {
+        allow get: if isSignedIn() && isValidId(mandalId) && isValidId(docId) && resource != null && existing().user_id == mandalId && isMandalMember(mandalId);
+        allow list: if isSignedIn() && existing().user_id == mandalId && isMandalMember(mandalId);
+        allow create: if isSignedIn() && isValidId(mandalId) && isValidId(docId) && isMandalAdmin(mandalId) && isValidDocument(incoming(), mandalId) && incoming().createdAt == request.time;
+        allow update: if isSignedIn() && isValidId(mandalId) && isValidId(docId) && isMandalAdmin(mandalId) && existing().user_id == mandalId && isValidDocument(incoming(), mandalId) && incoming().user_id == existing().user_id && incoming().createdAt == existing().createdAt;
+        allow delete: if isSignedIn() && isValidId(mandalId) && isValidId(docId) && isMandalAdmin(mandalId) && existing().user_id == mandalId;
+      }
+
+      match /handovers/{handoverId} {
+        allow get: if isSignedIn() && isValidId(mandalId) && isValidId(handoverId) && resource != null && existing().user_id == mandalId && isMandalMember(mandalId);
+        allow list: if isSignedIn() && existing().user_id == mandalId && isMandalMember(mandalId);
+        allow create: if isSignedIn() && isValidId(mandalId) && isValidId(handoverId) && isMandalWriter(mandalId) && isValidHandover(incoming(), mandalId) && incoming().collectorUid == request.auth.uid && incoming().status == 'pending' && incoming().createdAt == request.time;
+        allow update: if isSignedIn() && isValidId(mandalId) && isValidId(handoverId) && isMandalAdmin(mandalId) && existing().user_id == mandalId && isValidHandover(incoming(), mandalId) && incoming().user_id == existing().user_id && incoming().createdAt == existing().createdAt;
+        allow delete: if isSignedIn() && isValidId(mandalId) && isValidId(handoverId) && isMandalAdmin(mandalId) && existing().user_id == mandalId;
+      }
+
+      match /wallet_transactions/{txId} {
+        allow get: if isSignedIn() && isValidId(mandalId) && isValidId(txId) && resource != null && existing().user_id == mandalId && isMandalMember(mandalId);
+        allow list: if isSignedIn() && existing().user_id == mandalId && isMandalMember(mandalId);
+        allow create: if isSignedIn()
+          && isValidId(mandalId)
+          && isValidId(txId)
+          && isValidWalletTx(incoming(), mandalId)
+          && incoming().createdAt == request.time
+          && (
+            isMandalAdmin(mandalId)
+            || (isMandalWriter(mandalId)
+              && incoming().type == 'receipt_sent'
+              && incoming().creditsDelta == -1
+              && incoming().amountInr == 0)
+          );
+        allow update: if false;
+        allow delete: if isSignedIn() && isValidId(mandalId) && isValidId(txId) && isMandalAdmin(mandalId) && existing().user_id == mandalId;
+      }
+
+      match /credit_transactions/{txId} {
+        allow get: if isSignedIn() && isValidId(mandalId) && isValidId(txId) && resource != null && existing().user_id == mandalId && isMandalMember(mandalId);
+        allow list: if isSignedIn() && existing().user_id == mandalId && isMandalMember(mandalId);
+        allow create: if isSignedIn()
+          && isValidId(mandalId)
+          && isValidId(txId)
+          && isMandalAdmin(mandalId)
+          && isValidCreditTx(incoming(), mandalId)
+          && incoming().id == txId
+          && incoming().created_at == request.time;
+        allow update: if false;
+        allow delete: if isSignedIn() && isValidId(mandalId) && isValidId(txId) && isMandalAdmin(mandalId) && existing().user_id == mandalId;
+      }
+
+      match /audit_logs/{logId} {
+        allow get: if isSignedIn() && isValidId(mandalId) && isValidId(logId) && resource != null && existing().user_id == mandalId && isMandalMember(mandalId);
+        allow list: if isSignedIn() && existing().user_id == mandalId && isMandalMember(mandalId);
+        allow create: if isSignedIn() && isValidId(mandalId) && isValidId(logId) && isMandalWriter(mandalId) && isValidAuditLog(incoming(), mandalId) && incoming().performedByUid == request.auth.uid && incoming().timestamp == request.time;
+        allow update, delete: if false;
+      }
+
+      match /vendors/{vendorId} {
+        allow get: if isSignedIn() && isValidId(mandalId) && isValidId(vendorId) && resource != null && existing().user_id == mandalId && isMandalMember(mandalId);
+        allow list: if isSignedIn() && existing().user_id == mandalId && isMandalMember(mandalId);
+        allow create: if isSignedIn() && isValidId(mandalId) && isValidId(vendorId) && isMandalAdmin(mandalId) && isValidVendor(incoming(), mandalId) && incoming().createdAt == request.time && incoming().updatedAt == request.time;
+        allow update: if isSignedIn() && isValidId(mandalId) && isValidId(vendorId) && isMandalAdmin(mandalId) && existing().user_id == mandalId && isValidVendor(incoming(), mandalId) && incoming().user_id == existing().user_id && incoming().createdAt == existing().createdAt && incoming().updatedAt == request.time;
+        allow delete: if isSignedIn() && isValidId(mandalId) && isValidId(vendorId) && isMandalAdmin(mandalId) && existing().user_id == mandalId;
+      }
+    }
+
+    match /public_receipts/{publicReceiptId} {
+      allow get: if isValidId(publicReceiptId);
+      allow list: if isSignedIn() && isRecordOwner(existing());
+      allow create: if isSignedIn()
+        && isValidId(publicReceiptId)
+        && isValidPublicReceipt(incoming())
+        && incoming().publicReceiptId == publicReceiptId
+        && isMandalWriter(incoming().mandalId);
+      allow update: if isSignedIn()
+        && isValidId(publicReceiptId)
+        && isMandalWriter(existing().mandalId)
+        && isValidPublicReceipt(incoming())
+        && incoming().user_id == existing().user_id
+        && incoming().mandalId == existing().mandalId
+        && incoming().publicReceiptId == existing().publicReceiptId;
+      allow delete: if isSignedIn() && isValidId(publicReceiptId) && isMandalAdmin(existing().mandalId);
+    }
+
+    match /public_mandals/{joinCode} {
+      allow get: if isValidId(joinCode);
+      allow list: if isSignedIn() && isRecordOwner(existing());
+      allow create: if isSignedIn()
+        && isValidId(joinCode)
+        && isValidPublicMandal(incoming())
+        && incoming().joinCode == joinCode
+        && isMandalWriter(incoming().mandalId);
+      allow update: if isSignedIn()
+        && isValidId(joinCode)
+        && isMandalWriter(existing().mandalId)
+        && isValidPublicMandal(incoming())
+        && incoming().user_id == existing().user_id
+        && incoming().mandalId == existing().mandalId
+        && incoming().joinCode == existing().joinCode;
+      allow delete: if isSignedIn() && isValidId(joinCode) && isMandalAdmin(existing().mandalId);
+    }
+
+    match /donations/{docId} {
+      allow get: if isSignedIn()
+        && isValidId(docId)
+        && resource != null
+        && existing().user_id == existing().mandalId
+        && isMandalMember(existing().mandalId);
+      allow list: if isSignedIn()
+        && existing().user_id == existing().mandalId
+        && isMandalMember(existing().mandalId);
+      allow create: if isSignedIn()
+        && isValidId(docId)
+        && isValidDonation(incoming())
+        && isMandalWriter(incoming().mandalId)
+        && incoming().whatsappStatus in ['not_sent', 'pending', 'sent']
+        && incoming().createdAt == request.time;
+      allow update: if isSignedIn()
+        && isValidId(docId)
+        && existing().user_id == existing().mandalId
+        && isMandalWriter(existing().mandalId)
+        && isValidDonation(incoming())
+        && incoming().user_id == existing().user_id
+        && incoming().mandalId == existing().mandalId
+        && incoming().utsavId == existing().utsavId
+        && incoming().entryId == existing().entryId
+        && incoming().amount == existing().amount
+        && incoming().createdAt == existing().createdAt
+        && incoming().diff(existing()).affectedKeys().hasOnly(['whatsappStatus', 'whatsappError', 'receiptImageUrl', 'phone']);
+      allow delete: if false;
+    }
+  }
+}

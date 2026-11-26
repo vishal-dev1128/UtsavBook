@@ -1,0 +1,423 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated MandalBook user profile",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "email": { "type": "string", "maxLength": 120 },
+        "phone": { "type": "string", "maxLength": 24 },
+        "platformRole": { "type": "string", "enum": ["user", "superadmin"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["user_id", "name", "platformRole", "createdAt"]
+    },
+    "UserMandalLink": {
+      "title": "UserMandalLink",
+      "description": "Maps a user UID to their active mandalId and role",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "uid": { "type": "string", "maxLength": 128 },
+        "mandalId": { "type": "string", "maxLength": 128 },
+        "role": { "type": "string", "enum": ["admin", "collector", "auditor"] },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["user_id", "uid", "mandalId", "role", "updatedAt"]
+    },
+    "MandalCodeIndex": {
+      "title": "MandalCodeIndex",
+      "description": "Invite lookup mapping join code to mandalId",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "joinCode": { "type": "string", "maxLength": 24 },
+        "mandalId": { "type": "string", "maxLength": 128 },
+        "mandalName": { "type": "string", "maxLength": 140 },
+        "area": { "type": "string", "maxLength": 200 },
+        "ownerId": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["user_id", "joinCode", "mandalId", "mandalName", "ownerId", "createdAt"]
+    },
+    "Mandal": {
+      "title": "Mandal",
+      "description": "Mandal organization profile, WhatsApp credit balance, and receipt customization",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 140 },
+        "localName": { "type": "string", "maxLength": 140 },
+        "subtitle": { "type": "string", "maxLength": 140 },
+        "address": { "type": "string", "maxLength": 240 },
+        "estYear": { "type": "string", "maxLength": 10 },
+        "logoUrl": { "type": "string", "maxLength": 250000 },
+        "signatureUrl": { "type": "string", "maxLength": 250000 },
+        "upiId": { "type": "string", "maxLength": 100 },
+        "upiQrUrl": { "type": "string", "maxLength": 250000 },
+        "receiptPrefix": { "type": "string", "minLength": 1, "maxLength": 16 },
+        "joinCode": { "type": "string", "minLength": 4, "maxLength": 24 },
+        "tierName": { "type": "string", "enum": ["Free", "Bronze", "Silver", "Gold"] },
+        "whatsappCredits": { "type": "integer" },
+        "whatsapp_credits": { "type": "integer" },
+        "isVerified": { "type": "boolean" },
+        "showDonorsPublic": { "type": "boolean" },
+        "ownerId": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["user_id", "name", "estYear", "receiptPrefix", "joinCode", "tierName", "whatsappCredits", "isVerified", "showDonorsPublic", "ownerId", "createdAt", "updatedAt"]
+    },
+    "MandalMember": {
+      "title": "MandalMember",
+      "description": "Committee member with role and cash-in-hand counter",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "uid": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "phone": { "type": "string", "maxLength": 24 },
+        "email": { "type": "string", "maxLength": 120 },
+        "role": { "type": "string", "enum": ["admin", "collector", "auditor"] },
+        "cashInHand": { "type": "number" },
+        "status": { "type": "string", "enum": ["active", "suspended"] },
+        "joinedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["user_id", "uid", "name", "role", "cashInHand", "status", "joinedAt"]
+    },
+    "Utsav": {
+      "title": "Utsav",
+      "description": "Festival cycle holding running totals and receipt sequence",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "yearCycle": { "type": "string", "minLength": 4, "maxLength": 20 },
+        "lastReceiptSeq": { "type": "integer" },
+        "totalCollected": { "type": "number" },
+        "totalSpent": { "type": "number" },
+        "categoryBudgets": { "type": "object" },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["user_id", "name", "yearCycle", "lastReceiptSeq", "totalCollected", "totalSpent", "isActive", "createdAt"]
+    },
+    "LedgerEntry": {
+      "title": "LedgerEntry",
+      "description": "Income (Vargani), Expense (Javak), or In-Kind Goods entry inside an utsav",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "type": { "type": "string", "enum": ["income", "expense", "goods"] },
+        "receiptNumber": { "type": "string", "maxLength": 32 },
+        "publicReceiptId": { "type": "string", "maxLength": 64 },
+        "titleOrDonorName": { "type": "string", "minLength": 1, "maxLength": 140 },
+        "flatOrAddress": { "type": "string", "maxLength": 140 },
+        "donorPhone": { "type": "string", "maxLength": 24 },
+        "head": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "amount": { "type": "number" },
+        "goodsDescription": { "type": "string", "maxLength": 240 },
+        "quantity": { "type": "string", "maxLength": 60 },
+        "estimatedValue": { "type": "number" },
+        "paymentMode": { "type": "string", "enum": ["CASH", "UPI", "BANK", "GOODS"] },
+        "upiTransactionId": { "type": "string", "maxLength": 80 },
+        "isAnonymous": { "type": "boolean" },
+        "billPhotoUrl": { "type": "string", "maxLength": 250000 },
+        "receiptImageUrl": { "type": "string", "maxLength": 2000 },
+        "note": { "type": "string", "maxLength": 300 },
+        "whatsappStatus": { "type": "string", "enum": ["not_sent", "pending", "sent", "delivered", "failed"] },
+        "whatsappMessageId": { "type": "string", "maxLength": 120 },
+        "whatsappError": { "type": "string", "maxLength": 500 },
+        "approvalStatus": { "type": "string", "enum": ["approved", "pending"] },
+        "createdByUid": { "type": "string", "maxLength": 128 },
+        "createdByName": { "type": "string", "maxLength": 100 },
+        "isVoided": { "type": "boolean" },
+        "voidedAt": { "type": "string", "maxLength": 64 },
+        "entryDate": { "type": "string", "maxLength": 32 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["user_id", "type", "titleOrDonorName", "head", "amount", "paymentMode", "whatsappStatus", "approvalStatus", "createdByUid", "createdByName", "isVoided", "entryDate", "createdAt"]
+    },
+    "Donation": {
+      "title": "Donation",
+      "description": "Donation receipt snapshot and WhatsApp sharing record",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "mandalId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "utsavId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "entryId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "donorName": { "type": "string", "minLength": 1, "maxLength": 140 },
+        "flatNo": { "type": "string", "maxLength": 140 },
+        "phone": { "type": "string", "maxLength": 20 },
+        "amount": { "type": "number" },
+        "mode": { "type": "string", "enum": ["CASH", "UPI", "BANK", "GOODS"] },
+        "category": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "utsavCycle": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "mandalName": { "type": "string", "minLength": 1, "maxLength": 140 },
+        "receiptNo": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "receiptImageUrl": { "type": "string", "maxLength": 2000 },
+        "whatsappStatus": { "type": "string", "enum": ["not_sent", "pending", "sent", "delivered", "failed"] },
+        "whatsappMessageId": { "type": "string", "maxLength": 120 },
+        "whatsappError": { "type": "string", "maxLength": 500 },
+        "creditDeducted": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["user_id", "mandalId", "utsavId", "entryId", "donorName", "amount", "mode", "category", "utsavCycle", "mandalName", "receiptNo", "whatsappStatus", "createdAt"]
+    },
+    "NakashaUnit": {
+      "title": "NakashaUnit",
+      "description": "Wing/lane flat or household mapping for door-to-door vargani tracking",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "wingName": { "type": "string", "maxLength": 60 },
+        "flatNumber": { "type": "string", "maxLength": 40 },
+        "residentName": { "type": "string", "maxLength": 120 },
+        "phone": { "type": "string", "maxLength": 24 },
+        "status": { "type": "string", "enum": ["pending", "collected", "not_home", "skipped"] },
+        "donationAmount": { "type": "number" },
+        "assignedCollectorUid": { "type": "string", "maxLength": 128 },
+        "assignedCollectorName": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["user_id", "wingName", "flatNumber", "residentName", "status", "donationAmount"]
+    },
+    "Vendor": {
+      "title": "Vendor",
+      "description": "Vendor contract, advance payments, and udhaar/baki tracker scoped to an utsav",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "utsavId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "category": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "phone": { "type": "string", "maxLength": 24 },
+        "totalContract": { "type": "number" },
+        "advancePaid": { "type": "number" },
+        "dueDate": { "type": "string", "maxLength": 32 },
+        "note": { "type": "string", "maxLength": 300 },
+        "status": { "type": "string", "enum": ["pending", "partial", "paid"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["user_id", "utsavId", "name", "category", "totalContract", "advancePaid", "status", "createdAt", "updatedAt"]
+    },
+    "MandalEvent": {
+      "title": "MandalEvent",
+      "description": "Events patrika schedule item",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 120 },
+        "date": { "type": "string", "maxLength": 32 },
+        "time": { "type": "string", "maxLength": 32 },
+        "description": { "type": "string", "maxLength": 300 },
+        "location": { "type": "string", "maxLength": 140 }
+      },
+      "required": ["user_id", "title", "date", "time"]
+    },
+    "MandalDocument": {
+      "title": "MandalDocument",
+      "description": "Permission letter, Fire NOC, or vendor bill document",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 140 },
+        "category": { "type": "string", "maxLength": 60 },
+        "fileUrl": { "type": "string", "maxLength": 250000 },
+        "uploadedBy": { "type": "string", "maxLength": 100 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["user_id", "title", "category", "uploadedBy", "createdAt"]
+    },
+    "CashHandover": {
+      "title": "CashHandover",
+      "description": "Jama cash handover request from collector to Khajindar",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "utsavId": { "type": "string", "maxLength": 128 },
+        "collectorUid": { "type": "string", "maxLength": 128 },
+        "collectorName": { "type": "string", "maxLength": 100 },
+        "amount": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "confirmed"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["user_id", "utsavId", "collectorUid", "collectorName", "amount", "status", "createdAt"]
+    },
+    "WalletTransaction": {
+      "title": "WalletTransaction",
+      "description": "Prepaid WhatsApp receipt credit ledger",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "type": { "type": "string", "enum": ["signup_bonus", "pack_purchase", "receipt_sent", "failed_refund"] },
+        "creditsDelta": { "type": "integer" },
+        "amountInr": { "type": "number" },
+        "packName": { "type": "string", "maxLength": 80 },
+        "razorpayPaymentId": { "type": "string", "maxLength": 120 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["user_id", "type", "creditsDelta", "amountInr", "createdAt"]
+    },
+    "CreditTransaction": {
+      "title": "CreditTransaction",
+      "description": "Prepaid WhatsApp receipt pack purchase transaction log",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "pack_name": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "credits_added": { "type": "integer" },
+        "amount_paid": { "type": "number" },
+        "payment_ref": { "type": "string", "minLength": 4, "maxLength": 120 },
+        "status": { "type": "string", "enum": ["completed", "pending", "failed"] },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["user_id", "id", "pack_name", "credits_added", "amount_paid", "payment_ref", "status", "created_at"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Immutable action audit trail",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "action": { "type": "string", "maxLength": 40 },
+        "entryId": { "type": "string", "maxLength": 128 },
+        "summary": { "type": "string", "maxLength": 300 },
+        "beforeData": { "type": "string", "maxLength": 1000 },
+        "afterData": { "type": "string", "maxLength": 1000 },
+        "performedByUid": { "type": "string", "maxLength": 128 },
+        "performedByName": { "type": "string", "maxLength": 100 },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["user_id", "action", "entryId", "summary", "performedByUid", "performedByName", "timestamp"]
+    },
+    "PublicReceipt": {
+      "title": "PublicReceipt",
+      "description": "Public QR verification receipt snapshot (owner/member writable, readable by receipt ID)",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "publicReceiptId": { "type": "string", "maxLength": 64 },
+        "mandalId": { "type": "string", "maxLength": 128 },
+        "mandalName": { "type": "string", "maxLength": 140 },
+        "mandalAddress": { "type": "string", "maxLength": 240 },
+        "estYear": { "type": "string", "maxLength": 10 },
+        "utsavName": { "type": "string", "maxLength": 80 },
+        "receiptNumber": { "type": "string", "maxLength": 32 },
+        "donorName": { "type": "string", "maxLength": 140 },
+        "flatOrAddress": { "type": "string", "maxLength": 140 },
+        "amount": { "type": "number" },
+        "paymentMode": { "type": "string", "maxLength": 16 },
+        "upiTransactionId": { "type": "string", "maxLength": 80 },
+        "isAnonymous": { "type": "boolean" },
+        "date": { "type": "string", "maxLength": 32 },
+        "receiptImageUrl": { "type": "string", "maxLength": 2000 },
+        "isVerified": { "type": "boolean" },
+        "isVoided": { "type": "boolean" }
+      },
+      "required": ["user_id", "publicReceiptId", "mandalId", "mandalName", "utsavName", "receiptNumber", "donorName", "amount", "paymentMode", "date", "isVoided"]
+    },
+    "PublicMandalSnapshot": {
+      "title": "PublicMandalSnapshot",
+      "description": "Public transparency ledger summary snapshot for /m/:mandalCode (no PII)",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "joinCode": { "type": "string", "maxLength": 24 },
+        "mandalId": { "type": "string", "maxLength": 128 },
+        "mandalName": { "type": "string", "maxLength": 140 },
+        "address": { "type": "string", "maxLength": 240 },
+        "estYear": { "type": "string", "maxLength": 10 },
+        "isVerified": { "type": "boolean" },
+        "utsavName": { "type": "string", "maxLength": 80 },
+        "yearCycle": { "type": "string", "maxLength": 20 },
+        "totalCollected": { "type": "number" },
+        "totalSpent": { "type": "number" },
+        "showDonorsPublic": { "type": "boolean" },
+        "categoryBreakdown": { "type": "array" },
+        "publicDonors": { "type": "array" },
+        "publicGoods": { "type": "array" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["user_id", "joinCode", "mandalId", "mandalName", "utsavName", "totalCollected", "totalSpent", "showDonorsPublic", "categoryBreakdown", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User profiles"
+    },
+    "/userMandals/{userId}": {
+      "schema": { "$ref": "#/entities/UserMandalLink" },
+      "description": "Active mandal pointer per user"
+    },
+    "/mandalCodes/{joinCode}": {
+      "schema": { "$ref": "#/entities/MandalCodeIndex" },
+      "description": "Invite join code index"
+    },
+    "/mandals/{mandalId}": {
+      "schema": { "$ref": "#/entities/Mandal" },
+      "description": "Mandal profile and credits"
+    },
+    "/mandals/{mandalId}/members/{userId}": {
+      "schema": { "$ref": "#/entities/MandalMember" },
+      "description": "Committee members and roles"
+    },
+    "/mandals/{mandalId}/utsavs/{utsavId}": {
+      "schema": { "$ref": "#/entities/Utsav" },
+      "description": "Festival cycles"
+    },
+    "/mandals/{mandalId}/utsavs/{utsavId}/entries/{entryId}": {
+      "schema": { "$ref": "#/entities/LedgerEntry" },
+      "description": "Income, expense, and goods entries"
+    },
+    "/mandals/{mandalId}/nakasha/{unitId}": {
+      "schema": { "$ref": "#/entities/NakashaUnit" },
+      "description": "Wing/lane collection map"
+    },
+    "/mandals/{mandalId}/events/{eventId}": {
+      "schema": { "$ref": "#/entities/MandalEvent" },
+      "description": "Festival schedule"
+    },
+    "/mandals/{mandalId}/documents/{docId}": {
+      "schema": { "$ref": "#/entities/MandalDocument" },
+      "description": "Permissions and vendor bills"
+    },
+    "/mandals/{mandalId}/handovers/{handoverId}": {
+      "schema": { "$ref": "#/entities/CashHandover" },
+      "description": "Collector Jama cash handovers"
+    },
+    "/mandals/{mandalId}/wallet_transactions/{txId}": {
+      "schema": { "$ref": "#/entities/WalletTransaction" },
+      "description": "WhatsApp receipt wallet ledger"
+    },
+    "/mandals/{mandalId}/credit_transactions/{txId}": {
+      "schema": { "$ref": "#/entities/CreditTransaction" },
+      "description": "Prepaid WhatsApp receipt pack purchase history"
+    },
+    "/mandals/{mandalId}/audit_logs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Immutable activity audit logs"
+    },
+    "/mandals/{mandalId}/vendors/{vendorId}": {
+      "schema": { "$ref": "#/entities/Vendor" },
+      "description": "Vendor contract & udhaar/baki tracker"
+    },
+    "/public_receipts/{publicReceiptId}": {
+      "schema": { "$ref": "#/entities/PublicReceipt" },
+      "description": "QR verification receipts"
+    },
+    "/public_mandals/{joinCode}": {
+      "schema": { "$ref": "#/entities/PublicMandalSnapshot" },
+      "description": "Ledger summary snapshot"
+    },
+    "/donations/{docId}": {
+      "schema": { "$ref": "#/entities/Donation" },
+      "description": "WhatsApp receipt auto-send queue triggered on creation"
+    }
+  }
+}

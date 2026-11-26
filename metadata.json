@@ -1,0 +1,8 @@
+{
+  "name": "BillKar — Smart Billing & WhatsApp Receipt Platform",
+  "description": "Browser-based POS billing, GST invoicing, inventory, udhaar khata, and instant WhatsApp digital receipts for small shops, boutiques, salons, and freelancers.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

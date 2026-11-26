@@ -1,0 +1,318 @@
+import type { LucideIcon } from 'lucide-react';
+import { animate, motion, useMotionValue } from 'motion/react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+
+export interface LiquidNavItem {
+  to: string;
+  label: string;
+  icon: LucideIcon;
+  badge?: number;
+}
+
+interface LiquidGlassNavBarProps {
+  items: LiquidNavItem[];
+  phonePreviewOnDesktop?: boolean;
+}
+
+export function LiquidGlassNavBar({
+  items,
+  phonePreviewOnDesktop = false,
+}: LiquidGlassNavBarProps) {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const rawIndex = items.findIndex(
+    (item) => location.pathname === item.to || location.pathname.startsWith(`${item.to}/`),
+  );
+  const activeIndex = rawIndex >= 0 ? rawIndex : 0;
+
+  const trackRef = useRef<HTMLDivElement>(null);
+  const [trackWidth, setTrackWidth] = useState(0);
+  const [dragHoverIndex, setDragHoverIndex] = useState<number | null>(null);
+  const isDraggingRef = useRef(false);
+  const pointerStateRef = useRef<{
+    pointerId: number | null;
+    startX: number;
+    lastX: number;
+    dragging: boolean;
+  }>({ pointerId: null, startX: 0, lastX: 0, dragging: false });
+
+  const prevIndexRef = useRef(activeIndex);
+  const animRefs = useRef<Array<{ stop: () => void }>>([]);
+  const suppressClickRef = useRef(false);
+
+  const pillX = useMotionValue(0);
+  const pillW = useMotionValue(0);
+  const pillScaleY = useMotionValue(1);
+
+  const slotWidth = trackWidth > 0 && items.length > 0 ? trackWidth / items.length : 0;
+
+  const stopAnimations = useCallback(() => {
+    animRefs.current.forEach((ctrl) => ctrl.stop());
+    animRefs.current = [];
+  }, []);
+
+  // Measure track width synchronously & on resize so the pill stays aligned on any screen
+  useLayoutEffect(() => {
+    const el = trackRef.current;
+    if (!el) return;
+
+    const measure = () => {
+      const w = el.getBoundingClientRect().width;
+      if (w > 0) setTrackWidth(w);
+    };
+
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const animatePillToIndex = useCallback(
+    (targetIdx: number, immediate = false) => {
+      if (slotWidth <= 0) return;
+
+      stopAnimations();
+      const targetX = targetIdx * slotWidth;
+      const startX = pillX.get();
+      const startW = pillW.get() || slotWidth;
+
+      if (immediate || Math.abs(targetX - startX) < 1) {
+        pillX.set(targetX);
+        pillW.set(slotWidth);
+        pillScaleY.set(1);
+        return;
+      }
+
+      const distance = Math.abs(targetX - startX);
+      const movingRight = targetX > startX;
+      // Liquid droplet stretch proportional to travel distance
+      const stretchExtra = Math.min(distance * 0.62, slotWidth * 1.15);
+      const peakWidth = slotWidth + stretchExtra;
+      const midX = movingRight
+        ? startX + (targetX - startX) * 0.28
+        : targetX + (startX - targetX) * 0.1;
+
+      animRefs.current = [
+        animate(pillX, [startX, midX, targetX], {
+          duration: 0.44,
+          times: [0, 0.4, 1],
+          ease: [0.22, 1.08, 0.36, 1],
+        }),
+        animate(pillW, [startW, peakWidth, slotWidth], {
+          duration: 0.44,
+          times: [0, 0.4, 1],
+          ease: [0.22, 1, 0.36, 1],
+        }),
+        animate(pillScaleY, [1, 0.92, 1.03, 1], {
+          duration: 0.44,
+          times: [0, 0.34, 0.72, 1],
+          ease: 'easeOut',
+        }),
+      ];
+    },
+    [pillScaleY, pillW, pillX, slotWidth, stopAnimations],
+  );
+
+  // Sync pill position when trackWidth initializes or activeIndex changes
+  useEffect(() => {
+    if (slotWidth <= 0 || isDraggingRef.current) return;
+
+    if (pillW.get() === 0) {
+      animatePillToIndex(activeIndex, true);
+      prevIndexRef.current = activeIndex;
+      return;
+    }
+
+    if (prevIndexRef.current !== activeIndex) {
+      animatePillToIndex(activeIndex, false);
+      prevIndexRef.current = activeIndex;
+    } else {
+      // Resize adjustment without stretch
+      animatePillToIndex(activeIndex, true);
+    }
+  }, [activeIndex, animatePillToIndex, pillW, slotWidth]);
+
+  useEffect(() => stopAnimations, [stopAnimations]);
+
+  const getIndexFromClientX = useCallback(
+    (clientX: number) => {
+      const el = trackRef.current;
+      if (!el || items.length === 0) return activeIndex;
+      const rect = el.getBoundingClientRect();
+      const relX = Math.max(0, Math.min(rect.width - 1, clientX - rect.left));
+      return Math.min(items.length - 1, Math.floor((relX / rect.width) * items.length));
+    },
+    [activeIndex, items.length],
+  );
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+    pointerStateRef.current = {
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      lastX: e.clientX,
+      dragging: false,
+    };
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const st = pointerStateRef.current;
+    if (st.pointerId !== e.pointerId || slotWidth <= 0) return;
+
+    const movedFromStart = Math.abs(e.clientX - st.startX);
+    if (!st.dragging && movedFromStart > 8) {
+      st.dragging = true;
+      isDraggingRef.current = true;
+      stopAnimations();
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        // Ignore if pointer capture is unavailable
+      }
+    }
+
+    if (!st.dragging) return;
+
+    const el = trackRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const delta = e.clientX - st.lastX;
+    st.lastX = e.clientX;
+
+    const velocityStretch = Math.min(Math.abs(delta) * 1.1, slotWidth * 0.38);
+    const liveW = slotWidth + velocityStretch;
+    const rawLeft = e.clientX - rect.left - liveW / 2;
+    const clampedLeft = Math.max(0, Math.min(rect.width - liveW, rawLeft));
+
+    pillX.set(clampedLeft);
+    pillW.set(liveW);
+    pillScaleY.set(Math.max(0.92, 1 - velocityStretch / (slotWidth * 4)));
+
+    const hovered = getIndexFromClientX(e.clientX);
+    setDragHoverIndex((prev) => (prev === hovered ? prev : hovered));
+  };
+
+  const finishDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    const st = pointerStateRef.current;
+    if (st.pointerId !== e.pointerId) return;
+
+    const wasDragging = st.dragging;
+    pointerStateRef.current.pointerId = null;
+    pointerStateRef.current.dragging = false;
+    isDraggingRef.current = false;
+    setDragHoverIndex(null);
+
+    if (wasDragging) {
+      suppressClickRef.current = true;
+      window.setTimeout(() => {
+        suppressClickRef.current = false;
+      }, 60);
+      const targetIdx = getIndexFromClientX(e.clientX);
+      const targetItem = items[targetIdx];
+      prevIndexRef.current = targetIdx;
+      animatePillToIndex(targetIdx, false);
+      if (targetItem && targetItem.to !== location.pathname) {
+        navigate(targetItem.to);
+      }
+    }
+  };
+
+  const highlightedIndex = dragHoverIndex ?? activeIndex;
+
+  return (
+    <nav
+      aria-label="Mobile Navigation"
+      className={`fixed bottom-3 left-0 right-0 z-40 px-3 pointer-events-none safe-bottom ${
+        phonePreviewOnDesktop ? 'max-w-[430px] mx-auto' : 'md:hidden'
+      }`}
+    >
+      <div
+        className="liquid-glass-bar pointer-events-auto mx-auto max-w-[412px] rounded-full p-1.5 select-none touch-pan-y"
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={finishDrag}
+        onPointerCancel={finishDrag}
+      >
+        <div
+          ref={trackRef}
+          className="relative grid items-center h-[52px]"
+          style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}
+        >
+          {/* Sliding & Stretching Liquid Glass Pill */}
+          {slotWidth > 0 ? (
+            <motion.div
+              aria-hidden="true"
+              className="liquid-glass-pill pointer-events-none absolute top-0 bottom-0 left-0 rounded-full overflow-hidden"
+              style={{
+                x: pillX,
+                width: pillW,
+                scaleY: pillScaleY,
+                transformOrigin: 'center center',
+              }}
+            >
+              {/* Top specular highlight arc */}
+              <span className="pointer-events-none absolute inset-x-3 top-[1px] h-[1px] rounded-full bg-gradient-to-r from-transparent via-white/75 to-transparent" />
+            </motion.div>
+          ) : (
+            <div
+              aria-hidden="true"
+              className="liquid-glass-pill pointer-events-none absolute top-0 bottom-0 rounded-full"
+              style={{
+                left: `${(activeIndex / items.length) * 100}%`,
+                width: `${100 / items.length}%`,
+              }}
+            />
+          )}
+
+          {/* Nav Items */}
+          {items.map((item, idx) => {
+            const Icon = item.icon;
+            const isHighlighted = idx === highlightedIndex;
+            const isCurrentRoute = idx === activeIndex;
+
+            return (
+              <button
+                key={item.to}
+                type="button"
+                onClick={() => {
+                  if (suppressClickRef.current) return;
+                  if (item.to !== location.pathname) {
+                    navigate(item.to);
+                  }
+                }}
+                aria-current={isCurrentRoute ? 'page' : undefined}
+                aria-label={item.label}
+                className={`relative z-10 flex flex-col items-center justify-center gap-[3px] h-full w-full rounded-full px-1 transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60 ${
+                  isHighlighted
+                    ? 'text-white scale-[1.03]'
+                    : 'text-white/75 hover:text-white/95 active:scale-95'
+                }`}
+              >
+                <div className="relative flex items-center justify-center">
+                  <Icon
+                    className="w-[19px] h-[19px] transition-all duration-200"
+                    strokeWidth={isHighlighted ? 2.15 : 1.75}
+                  />
+                  {item.badge !== undefined && item.badge > 0 && (
+                    <span className="absolute -top-1.5 -right-2.5 min-w-[16px] h-[16px] px-1 rounded-full bg-[#EF4444] text-white text-[9.5px] font-extrabold flex items-center justify-center tabular-nums ring-1 ring-white/50 shadow-sm">
+                      {item.badge > 99 ? '99+' : item.badge}
+                    </span>
+                  )}
+                </div>
+                <span
+                  className={`text-[10.5px] leading-none tracking-[-0.01em] truncate max-w-full ${
+                    isHighlighted ? 'font-semibold' : 'font-medium'
+                  }`}
+                >
+                  {item.label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </nav>
+  );
+}
